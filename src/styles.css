@@ -1,0 +1,89 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans: "Manrope", system-ui, sans-serif;
+  --font-display: "Anton", "Manrope", sans-serif;
+  --radius-sm: 0px;
+  --radius-md: 2px;
+  --radius-lg: 4px;
+  --radius-xl: 6px;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-acid: var(--acid);
+  --color-ink: var(--ink);
+  --color-paper: var(--paper);
+}
+
+:root {
+  --radius: 0.25rem;
+  --acid: oklch(0.91 0.2 120);
+  --ink: oklch(0.19 0.01 70);
+  --paper: oklch(0.966 0.007 85);
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --card: oklch(0.99 0.004 85);
+  --card-foreground: var(--ink);
+  --popover: var(--card);
+  --popover-foreground: var(--ink);
+  --primary: var(--acid);
+  --primary-foreground: var(--ink);
+  --secondary: var(--ink);
+  --secondary-foreground: var(--paper);
+  --muted: oklch(0.92 0.008 85);
+  --muted-foreground: oklch(0.45 0.01 70);
+  --accent: var(--acid);
+  --accent-foreground: var(--ink);
+  --destructive: oklch(0.6 0.22 27);
+  --destructive-foreground: oklch(0.98 0 0);
+  --success: oklch(0.62 0.16 150);
+  --border: oklch(0.88 0.01 85);
+  --input: oklch(0.88 0.01 85);
+  --ring: var(--acid);
+  --stripes: repeating-linear-gradient(115deg, transparent 0 20px, color-mix(in oklab, var(--acid) 14%, transparent) 20px 24px);
+}
+
+@layer base {
+  * { border-color: var(--color-border); }
+  body { background-color: var(--color-background); color: var(--color-foreground); font-family: var(--font-sans); }
+  input, textarea, select { font: inherit; }
+}
+
+@utility font-display { font-family: var(--font-display); letter-spacing: 0.01em; }
+@utility stripes { background-image: var(--stripes); }
+@utility clip-lean { clip-path: polygon(0 0, 100% 0, 100% calc(100% - 14px), 0 100%); }
+@utility clip-chip { clip-path: polygon(0 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%); }
+@utility clip-btn { clip-path: polygon(0 0, calc(100% - 9px) 0, 100% 9px, 100% 100%, 0 100%); }
+@utility clip-card { clip-path: polygon(0 0, calc(100% - 13px) 0, 100% 13px, 100% 100%, 0 100%); }
+@utility clip-coin { clip-path: polygon(50% 0, 82% 12%, 100% 40%, 90% 78%, 58% 100%, 20% 88%, 0 52%, 12% 18%); }
+
+.field { width: 100%; background: var(--card); border: 1px solid var(--border); padding: 0.7rem 0.8rem; font-size: 14px; outline: none; }
+.field:focus { border-color: var(--ink); box-shadow: 0 0 0 2px var(--acid); }
+@keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+.rise { animation: rise .35s cubic-bezier(.32,.72,0,1) both; }
+@media print { .no-print { display: none !important; } }
+
+/* Product polish: safe-area support for mobile devices. */
+body { padding-bottom: env(safe-area-inset-bottom); }
+button, input, textarea, select { -webkit-tap-highlight-color: transparent; }

@@ -1,0 +1,9 @@
+{
+  "name": "Zumrad — Smart School",
+  "short_name": "Zumrad",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#111111",
+  "theme_color": "#c8ff00",
+  "description": "Student, teacher and parent school platform with AI-ready workflows."
+}
