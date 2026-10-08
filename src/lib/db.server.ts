@@ -12,6 +12,7 @@ function cfg() {
   return { base, key };
 }
 
+const authHdr = (key: string): Record<string, string> => (key.startsWith("eyJ") ? { authorization: `Bearer ${key}` } : {});
 export const eq = (v: string | number | boolean) => `eq.${v}`;
 export const inList = (ids: string[]) => `in.(${ids.join(",")})`;
 
@@ -21,7 +22,7 @@ export async function rest<T = any>(table: string, o: { method?: "GET" | "POST" 
   for (const [k, v] of Object.entries(o.q ?? {})) url.searchParams.set(k, v);
   const res = await fetch(url, {
     method: o.method ?? "GET",
-    headers: { apikey: key, authorization: `Bearer ${key}`, "content-type": "application/json", prefer: o.prefer ?? "return=representation" },
+    headers: { apikey: key, ...authHdr(key), "content-type": "application/json", prefer: o.prefer ?? "return=representation" },
     body: o.body === undefined ? undefined : JSON.stringify(o.body),
   });
   if (!res.ok) {
@@ -109,12 +110,12 @@ export function weekKey(t = Date.now()) {
 /* ---- Storage (private bucket "videos") ---- */
 export async function uploadMedia(path: string, bytes: ArrayBuffer, contentType: string) {
   const { base, key } = cfg();
-  const res = await fetch(`${base}/storage/v1/object/videos/${path}`, { method: "POST", headers: { apikey: key, authorization: `Bearer ${key}`, "content-type": contentType, "x-upsert": "true" }, body: bytes });
+  const res = await fetch(`${base}/storage/v1/object/videos/${path}`, { method: "POST", headers: { apikey: key, ...authHdr(key), "content-type": contentType, "x-upsert": "true" }, body: bytes });
   if (!res.ok) throw new Error(`storage ${res.status}: ${(await res.text()).slice(0, 200)}`);
 }
 export async function signedMediaUrl(path: string) {
   const { base, key } = cfg();
-  const res = await fetch(`${base}/storage/v1/object/sign/videos/${path}`, { method: "POST", headers: { apikey: key, authorization: `Bearer ${key}`, "content-type": "application/json" }, body: JSON.stringify({ expiresIn: 3600 }) });
+  const res = await fetch(`${base}/storage/v1/object/sign/videos/${path}`, { method: "POST", headers: { apikey: key, ...authHdr(key), "content-type": "application/json" }, body: JSON.stringify({ expiresIn: 3600 }) });
   if (!res.ok) throw new Error(`storage sign ${res.status}`);
   const { signedURL } = (await res.json()) as { signedURL: string };
   return signedURL.startsWith("http") ? signedURL : `${base}${signedURL.startsWith("/storage/v1") ? "" : "/storage/v1"}${signedURL}`;
