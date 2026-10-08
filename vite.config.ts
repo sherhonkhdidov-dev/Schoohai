@@ -11,6 +11,7 @@ import { loadEnv } from "vite";
 Object.assign(process.env, { ...loadEnv(process.env.NODE_ENV ?? "development", process.cwd(), ""), ...process.env });
 
 export default defineConfig({
+  vite: { server: { allowedHosts: true } },
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
     // nitro/vite builds from this
