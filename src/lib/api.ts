@@ -12,7 +12,6 @@ const phone = z.string().min(7).max(24).transform((s) => s.replace(/[^\d+]/g, ""
 const pin = z.string().regex(/^\d{6}$/);
 const code = z.string().length(6).transform((s) => s.toUpperCase());
 const head = z.object({ headB64: z.string().max(200_000), size: z.number().int().nonnegative(), type: z.string().max(60) });
-const post = () => createServerFn({ method: "POST" });
 
 /* ---------------- helpers ---------------- */
 async function assertPinFree(d: D, ph: string, p: string) {
@@ -52,7 +51,7 @@ async function teacherIdOf(d: D, u: import("./db.server").UserRow) {
 const studentsOf = (d: D, teacherId: string) => d.select<{ id: string; full_name: string; class_label: string | null }>("users", { select: "id,full_name,class_label", teacher_id: d.eq(teacherId), role: d.eq("student") });
 
 /* ---------------- auth ---------------- */
-export const registerStudentFn = post()
+export const registerStudentFn = createServerFn({ method: "POST" })
   .inputValidator(z.object({ fullName: z.string().min(3).max(100), father: z.string().min(2).max(60), age: z.coerce.number().int().min(5).max(20), school: z.string().min(1).max(120), cls: z.string().min(1).max(20), phone, phoneOwner: z.enum(["self", "parent"]), pin, teacherCode: code }))
   .handler(({ data }) => run(async () => {
     const d = await import("./db.server");
@@ -63,7 +62,7 @@ export const registerStudentFn = post()
     return { token: await d.signToken(id) };
   }));
 
-export const registerParentFn = post()
+export const registerParentFn = createServerFn({ method: "POST" })
   .inputValidator(z.object({ fullName: z.string().min(3).max(100), phone, pin, childCode: code }))
   .handler(({ data }) => run(async () => {
     const d = await import("./db.server");
@@ -74,7 +73,7 @@ export const registerParentFn = post()
     return { token: await d.signToken(id) };
   }));
 
-export const registerTeacherFn = post()
+export const registerTeacherFn = createServerFn({ method: "POST" })
   .inputValidator(z.object({ fullName: z.string().min(3).max(120), age: z.coerce.number().int().min(18).max(90), school: z.string().min(1).max(160), subject: z.string().min(1).max(80), phone, pin, diploma: image, photo: image, diplomaHead: head, photoHead: head, lang }))
   .handler(({ data }) => run(async () => {
     const d = await import("./db.server"), ai = await import("./ai.server");
@@ -91,7 +90,7 @@ export const registerTeacherFn = post()
     return { verdict: out.verdict, riskScore: out.check.riskScore, reasons: out.reasons, summary: out.check.summary, token: status === "approved" ? await d.signToken(id) : null };
   }));
 
-export const loginFn = post()
+export const loginFn = createServerFn({ method: "POST" })
   .inputValidator(z.object({ phone, pin }))
   .handler(({ data }) => run(async () => {
     const d = await import("./db.server");
@@ -107,7 +106,7 @@ export const loginFn = post()
     throw new AppError("invalid");
   }));
 
-export const meFn = post().inputValidator(z.object({ token })).handler(({ data }) => run(async () => {
+export const meFn = createServerFn({ method: "POST" }).inputValidator(z.object({ token })).handler(({ data }) => run(async () => {
   const d = await import("./db.server");
   const u = await d.auth(data.token);
   const base = { id: u.id, role: u.role, fullName: u.full_name, school: u.school, cls: u.class_label, code: u.code, coins: u.coins, subject: u.subject };
@@ -120,7 +119,7 @@ export const meFn = post().inputValidator(z.object({ token })).handler(({ data }
 }));
 
 /* ---------------- tasks ---------------- */
-export const tasksFn = post().inputValidator(z.object({ token })).handler(({ data }) => run(async () => {
+export const tasksFn = createServerFn({ method: "POST" }).inputValidator(z.object({ token })).handler(({ data }) => run(async () => {
   const d = await import("./db.server"); const u = await d.auth(data.token);
   const tid = await teacherIdOf(d, u);
   if (!tid) return [];
@@ -129,7 +128,7 @@ export const tasksFn = post().inputValidator(z.object({ token })).handler(({ dat
 }));
 
 /** FormData: token, subject, text, optional file (image/video <= 15 MB), optional voice (audio <= 3 MB). */
-export const createTaskFn = post()
+export const createTaskFn = createServerFn({ method: "POST" })
   .inputValidator((v: unknown) => { if (!(v instanceof FormData)) throw new Error("FormData expected"); return v; })
   .handler(({ data }) => run(async () => {
     const d = await import("./db.server");
@@ -155,7 +154,7 @@ export const createTaskFn = post()
     return true;
   }));
 
-export const taskMediaFn = post().inputValidator(z.object({ token, taskId: z.string().uuid(), kind: z.enum(["file", "voice"]) })).handler(({ data }) => run(async () => {
+export const taskMediaFn = createServerFn({ method: "POST" }).inputValidator(z.object({ token, taskId: z.string().uuid(), kind: z.enum(["file", "voice"]) })).handler(({ data }) => run(async () => {
   const d = await import("./db.server"); const u = await d.auth(data.token);
   const t = await d.one<{ teacher_id: string; file_path: string | null; voice_path: string | null }>("tasks", { select: "teacher_id,file_path,voice_path", id: d.eq(data.taskId) });
   if (!t || t.teacher_id !== (await teacherIdOf(d, u))) throw new AppError("forbidden");
@@ -165,7 +164,7 @@ export const taskMediaFn = post().inputValidator(z.object({ token, taskId: z.str
 }));
 
 /* ---------------- AI grading ---------------- */
-export const gradeHomeworkFn = post().inputValidator(z.object({ token, taskId: z.string().uuid().nullable(), image, seconds: z.number().int().min(0).max(86400), lang })).handler(({ data }) => run(async () => {
+export const gradeHomeworkFn = createServerFn({ method: "POST" }).inputValidator(z.object({ token, taskId: z.string().uuid().nullable(), image, seconds: z.number().int().min(0).max(86400), lang })).handler(({ data }) => run(async () => {
   const d = await import("./db.server"), ai = await import("./ai.server");
   const u = await d.auth(data.token, "student");
   const task = data.taskId ? await d.one<{ id: string; subject: string; text: string; teacher_id: string }>("tasks", { select: "id,subject,text,teacher_id", id: d.eq(data.taskId) }) : null;
@@ -180,7 +179,7 @@ export const gradeHomeworkFn = post().inputValidator(z.object({ token, taskId: z
   return { result, submissionId: sub.id, coinsAwarded: award, coins };
 }));
 
-export const gradeHandwritingFn = post().inputValidator(z.object({ token, image, lang })).handler(({ data }) => run(async () => {
+export const gradeHandwritingFn = createServerFn({ method: "POST" }).inputValidator(z.object({ token, image, lang })).handler(({ data }) => run(async () => {
   const d = await import("./db.server"), ai = await import("./ai.server");
   const u = await d.auth(data.token, "student");
   const result = await ai.gradeHandwriting({ image: data.image, lang: data.lang });
@@ -189,7 +188,7 @@ export const gradeHandwritingFn = post().inputValidator(z.object({ token, image,
 }));
 
 /* ---------------- stats / rating ---------------- */
-export const statsFn = post().inputValidator(z.object({ token })).handler(({ data }) => run(async () => {
+export const statsFn = createServerFn({ method: "POST" }).inputValidator(z.object({ token })).handler(({ data }) => run(async () => {
   const d = await import("./db.server"); const u = await d.auth(data.token);
   if (u.role === "teacher") return { avg: null as number | null, days: 0, minutes: 0, hand: null as number | null, handHistory: [] as number[], doneToday: false, child: "" };
   const s = await childOf(d, u);
@@ -208,7 +207,7 @@ export const statsFn = post().inputValidator(z.object({ token })).handler(({ dat
   };
 }));
 
-export const ratingFn = post().inputValidator(z.object({ token })).handler(({ data }) => run(async () => {
+export const ratingFn = createServerFn({ method: "POST" }).inputValidator(z.object({ token })).handler(({ data }) => run(async () => {
   const d = await import("./db.server"); const u = await d.auth(data.token);
   const tid = await teacherIdOf(d, u);
   if (!tid) return [];
@@ -223,7 +222,7 @@ export const ratingFn = post().inputValidator(z.object({ token })).handler(({ da
 }));
 
 /* ---------------- help requests + teacher video ---------------- */
-export const requestHelpFn = post().inputValidator(z.object({ token, submissionId: z.string().uuid() })).handler(({ data }) => run(async () => {
+export const requestHelpFn = createServerFn({ method: "POST" }).inputValidator(z.object({ token, submissionId: z.string().uuid() })).handler(({ data }) => run(async () => {
   const d = await import("./db.server"); const u = await d.auth(data.token, "student");
   const sub = await d.one<{ id: string; subject: string | null; result: { mistakes?: string[] } }>("submissions", { select: "id,subject,result", id: d.eq(data.submissionId), student_id: d.eq(u.id) });
   if (!sub) throw new AppError("forbidden");
@@ -233,7 +232,7 @@ export const requestHelpFn = post().inputValidator(z.object({ token, submissionI
   return true;
 }));
 
-export const helpRequestsFn = post().inputValidator(z.object({ token })).handler(({ data }) => run(async () => {
+export const helpRequestsFn = createServerFn({ method: "POST" }).inputValidator(z.object({ token })).handler(({ data }) => run(async () => {
   const d = await import("./db.server"); const u = await d.auth(data.token);
   let studs: { id: string; full_name: string }[];
   if (u.role === "teacher") studs = await studentsOf(d, u.id);
@@ -244,7 +243,7 @@ export const helpRequestsFn = post().inputValidator(z.object({ token })).handler
   return rows.map((r) => ({ id: r.id, student: name.get(r.student_id) ?? "", subject: r.subject, mistakes: r.mistakes, at: r.created_at, hasVideo: Boolean(r.video_path) }));
 }));
 
-export const answerHelpFn = post()
+export const answerHelpFn = createServerFn({ method: "POST" })
   .inputValidator((v: unknown) => { if (!(v instanceof FormData)) throw new Error("FormData expected"); return v; })
   .handler(({ data }) => run(async () => {
     const d = await import("./db.server");
@@ -263,7 +262,7 @@ export const answerHelpFn = post()
     return true;
   }));
 
-export const videoUrlFn = post().inputValidator(z.object({ token, requestId: z.string().uuid() })).handler(({ data }) => run(async () => {
+export const videoUrlFn = createServerFn({ method: "POST" }).inputValidator(z.object({ token, requestId: z.string().uuid() })).handler(({ data }) => run(async () => {
   const d = await import("./db.server"); const u = await d.auth(data.token);
   const r = await d.one<{ student_id: string; video_path: string | null }>("help_requests", { select: "student_id,video_path", id: d.eq(data.requestId) });
   if (!r?.video_path) throw new AppError("not_found");
@@ -274,7 +273,7 @@ export const videoUrlFn = post().inputValidator(z.object({ token, requestId: z.s
 }));
 
 /* ---------------- shop / canteen / bazaar ---------------- */
-export const buyRewardFn = post().inputValidator(z.object({ token, itemId: z.string().max(40) })).handler(({ data }) => run(async () => {
+export const buyRewardFn = createServerFn({ method: "POST" }).inputValidator(z.object({ token, itemId: z.string().max(40) })).handler(({ data }) => run(async () => {
   const d = await import("./db.server"); const u = await d.auth(data.token, "student");
   const item = SHOP.find((x) => x.id === data.itemId);
   if (!item) throw new AppError("bad_input");
@@ -283,7 +282,7 @@ export const buyRewardFn = post().inputValidator(z.object({ token, itemId: z.str
   return { coins };
 }));
 
-export const orderFn = post().inputValidator(z.object({ token, items: z.array(z.string().max(40)).min(1).max(30) })).handler(({ data }) => run(async () => {
+export const orderFn = createServerFn({ method: "POST" }).inputValidator(z.object({ token, items: z.array(z.string().max(40)).min(1).max(30) })).handler(({ data }) => run(async () => {
   const d = await import("./db.server"); const u = await d.auth(data.token, "student");
   const lines = data.items.map((id) => MENU.find((m) => m.id === id));
   if (lines.some((x) => !x)) throw new AppError("bad_input");
@@ -292,7 +291,7 @@ export const orderFn = post().inputValidator(z.object({ token, items: z.array(z.
   return { total };
 }));
 
-export const marketFn = post().inputValidator(z.object({ token })).handler(({ data }) => run(async () => {
+export const marketFn = createServerFn({ method: "POST" }).inputValidator(z.object({ token })).handler(({ data }) => run(async () => {
   const d = await import("./db.server"); const u = await d.auth(data.token);
   const school = (await childOf(d, u).catch(() => u)).school;
   if (!school) return [];
@@ -303,13 +302,13 @@ export const marketFn = post().inputValidator(z.object({ token })).handler(({ da
   return rows.map((r) => ({ id: r.id, title: r.title, price: r.price, kind: r.kind, seller: nm.get(r.seller_id) ?? "", mine: r.seller_id === u.id, reserved: Boolean(r.reserved_by), reservedBy: r.seller_id === u.id && r.reserved_by ? nm.get(r.reserved_by) ?? "" : null }));
 }));
 
-export const sellFn = post().inputValidator(z.object({ token, title: z.string().min(2).max(80), price: z.number().int().min(0).max(10_000_000).nullable(), kind: z.enum(["sell", "swap"]) })).handler(({ data }) => run(async () => {
+export const sellFn = createServerFn({ method: "POST" }).inputValidator(z.object({ token, title: z.string().min(2).max(80), price: z.number().int().min(0).max(10_000_000).nullable(), kind: z.enum(["sell", "swap"]) })).handler(({ data }) => run(async () => {
   const d = await import("./db.server"); const u = await d.auth(data.token, "student");
   await d.insert("market_items", { seller_id: u.id, school: u.school, title: data.title, price: data.kind === "swap" ? null : data.price, kind: data.kind });
   return true;
 }));
 
-export const reserveFn = post().inputValidator(z.object({ token, itemId: z.string().uuid() })).handler(({ data }) => run(async () => {
+export const reserveFn = createServerFn({ method: "POST" }).inputValidator(z.object({ token, itemId: z.string().uuid() })).handler(({ data }) => run(async () => {
   const d = await import("./db.server"); const u = await d.auth(data.token, "student");
   const rows = await d.patch("market_items", { id: d.eq(data.itemId), reserved_by: "is.null", school: d.eq(u.school ?? ""), seller_id: `neq.${u.id}` }, { reserved_by: u.id });
   if (!rows.length) throw new AppError("conflict");
@@ -318,7 +317,7 @@ export const reserveFn = post().inputValidator(z.object({ token, itemId: z.strin
 }));
 
 /* ---------------- anonymous questions, notebook, announcements ---------------- */
-export const questionsFn = post().inputValidator(z.object({ token })).handler(({ data }) => run(async () => {
+export const questionsFn = createServerFn({ method: "POST" }).inputValidator(z.object({ token })).handler(({ data }) => run(async () => {
   const d = await import("./db.server"); const u = await d.auth(data.token);
   const tid = await teacherIdOf(d, u);
   if (!tid) return [];
@@ -326,13 +325,13 @@ export const questionsFn = post().inputValidator(z.object({ token })).handler(({
   const rs = qs.length ? await d.select<{ question_id: string; text: string; author_id: string }>("replies", { select: "question_id,text,author_id", question_id: d.inList(qs.map((q) => q.id)), order: "created_at.asc" }) : [];
   return qs.map((q) => ({ id: q.id, text: q.text, mine: q.author_id === u.id, replies: rs.filter((r) => r.question_id === q.id).map((r) => ({ text: r.text, mine: r.author_id === u.id })) }));
 }));
-export const askFn = post().inputValidator(z.object({ token, text: z.string().min(2).max(500) })).handler(({ data }) => run(async () => {
+export const askFn = createServerFn({ method: "POST" }).inputValidator(z.object({ token, text: z.string().min(2).max(500) })).handler(({ data }) => run(async () => {
   const d = await import("./db.server"); const u = await d.auth(data.token, "student");
   if (!u.teacher_id) throw new AppError("forbidden");
   await d.insert("questions", { teacher_id: u.teacher_id, author_id: u.id, text: data.text });
   return true;
 }));
-export const replyFn = post().inputValidator(z.object({ token, questionId: z.string().uuid(), text: z.string().min(1).max(500) })).handler(({ data }) => run(async () => {
+export const replyFn = createServerFn({ method: "POST" }).inputValidator(z.object({ token, questionId: z.string().uuid(), text: z.string().min(1).max(500) })).handler(({ data }) => run(async () => {
   const d = await import("./db.server"); const u = await d.auth(data.token);
   const q = await d.one<{ teacher_id: string; author_id: string }>("questions", { select: "teacher_id,author_id", id: d.eq(data.questionId) });
   if (!q || q.teacher_id !== (await teacherIdOf(d, u))) throw new AppError("forbidden");
@@ -341,17 +340,17 @@ export const replyFn = post().inputValidator(z.object({ token, questionId: z.str
   return true;
 }));
 
-export const notebookFn = post().inputValidator(z.object({ token })).handler(({ data }) => run(async () => {
+export const notebookFn = createServerFn({ method: "POST" }).inputValidator(z.object({ token })).handler(({ data }) => run(async () => {
   const d = await import("./db.server"); const u = await d.auth(data.token, "student");
   return (await d.one<{ text: string }>("notebooks", { select: "text", student_id: d.eq(u.id) }))?.text ?? "";
 }));
-export const saveNotebookFn = post().inputValidator(z.object({ token, text: z.string().max(20000) })).handler(({ data }) => run(async () => {
+export const saveNotebookFn = createServerFn({ method: "POST" }).inputValidator(z.object({ token, text: z.string().max(20000) })).handler(({ data }) => run(async () => {
   const d = await import("./db.server"); const u = await d.auth(data.token, "student");
   await d.rest("notebooks", { method: "POST", q: { on_conflict: "student_id" }, body: { student_id: u.id, text: data.text, updated_at: new Date().toISOString() }, prefer: "resolution=merge-duplicates,return=minimal" });
   return true;
 }));
 
-export const announcementsFn = post().inputValidator(z.object({ token })).handler(({ data }) => run(async () => {
+export const announcementsFn = createServerFn({ method: "POST" }).inputValidator(z.object({ token })).handler(({ data }) => run(async () => {
   const d = await import("./db.server"); const u = await d.auth(data.token);
   const tid = await teacherIdOf(d, u);
   if (!tid) return [];
@@ -359,14 +358,14 @@ export const announcementsFn = post().inputValidator(z.object({ token })).handle
   const signed = u.role === "parent" && rows.length ? await d.select<{ announcement_id: string }>("announcement_signs", { select: "announcement_id", parent_id: d.eq(u.id), announcement_id: d.inList(rows.map((r) => r.id)) }) : [];
   return rows.map((r) => ({ id: r.id, text: r.text, at: r.created_at, signed: signed.some((s) => s.announcement_id === r.id) }));
 }));
-export const createAnnouncementFn = post().inputValidator(z.object({ token, text: z.string().min(2).max(500) })).handler(({ data }) => run(async () => {
+export const createAnnouncementFn = createServerFn({ method: "POST" }).inputValidator(z.object({ token, text: z.string().min(2).max(500) })).handler(({ data }) => run(async () => {
   const d = await import("./db.server"); const u = await d.auth(data.token, "teacher");
   await d.insert("announcements", { teacher_id: u.id, text: data.text });
   const studs = (await studentsOf(d, u.id)).map((s) => s.id);
   await d.notify([...studs, ...(await d.parentIdsOf(studs))], "announcement", { text: data.text.slice(0, 80) });
   return true;
 }));
-export const signAnnouncementFn = post().inputValidator(z.object({ token, id: z.string().uuid() })).handler(({ data }) => run(async () => {
+export const signAnnouncementFn = createServerFn({ method: "POST" }).inputValidator(z.object({ token, id: z.string().uuid() })).handler(({ data }) => run(async () => {
   const d = await import("./db.server"); const u = await d.auth(data.token, "parent");
   const a = await d.one<{ teacher_id: string }>("announcements", { select: "teacher_id", id: d.eq(data.id) });
   if (!a || a.teacher_id !== (await teacherIdOf(d, u))) throw new AppError("forbidden");
@@ -375,14 +374,14 @@ export const signAnnouncementFn = post().inputValidator(z.object({ token, id: z.
 }));
 
 /* ---------------- parent signature journal ---------------- */
-export const signaturesFn = post().inputValidator(z.object({ token })).handler(({ data }) => run(async () => {
+export const signaturesFn = createServerFn({ method: "POST" }).inputValidator(z.object({ token })).handler(({ data }) => run(async () => {
   const d = await import("./db.server"); const u = await d.auth(data.token, "parent");
   const rows = await d.select<{ week: string; speed: number; pressure: number; forged: boolean; img: string; hash: string; prev: string; created_at: string }>("signatures", { select: "week,speed,pressure,forged,img,hash,prev,created_at", parent_id: d.eq(u.id), order: "created_at.desc", limit: "20" });
   const wk = d.weekKey();
   return { week: wk, signed: rows.some((r) => r.week === wk && !r.forged), journal: rows.map((r) => ({ ...r, at: r.created_at })) };
 }));
 
-export const signReportFn = post().inputValidator(z.object({ token, speed: z.number().min(0).max(100000), pressure: z.number().min(0).max(1), img: z.string().max(250_000).startsWith("data:image/") })).handler(({ data }) => run(async () => {
+export const signReportFn = createServerFn({ method: "POST" }).inputValidator(z.object({ token, speed: z.number().min(0).max(100000), pressure: z.number().min(0).max(1), img: z.string().max(250_000).startsWith("data:image/") })).handler(({ data }) => run(async () => {
   const d = await import("./db.server"); const u = await d.auth(data.token, "parent");
   if (!u.child_id) throw new AppError("forbidden");
   const prevRows = await d.select<{ speed: number; pressure: number; forged: boolean; hash: string }>("signatures", { select: "speed,pressure,forged,hash", parent_id: d.eq(u.id), order: "created_at.desc", limit: "20" });
@@ -401,7 +400,7 @@ export const signReportFn = post().inputValidator(z.object({ token, speed: z.num
   return { forged };
 }));
 
-export const signalsFn = post().inputValidator(z.object({ token })).handler(({ data }) => run(async () => {
+export const signalsFn = createServerFn({ method: "POST" }).inputValidator(z.object({ token })).handler(({ data }) => run(async () => {
   const d = await import("./db.server"); const u = await d.auth(data.token, "teacher");
   const studs = await studentsOf(d, u.id);
   if (!studs.length) return [];
@@ -412,12 +411,12 @@ export const signalsFn = post().inputValidator(z.object({ token })).handler(({ d
 }));
 
 /* ---------------- in-app notifications ---------------- */
-export const notificationsFn = post().inputValidator(z.object({ token })).handler(({ data }) => run(async () => {
+export const notificationsFn = createServerFn({ method: "POST" }).inputValidator(z.object({ token })).handler(({ data }) => run(async () => {
   const d = await import("./db.server"); const u = await d.auth(data.token);
   const rows = await d.select<{ id: string; kind: string; meta: Record<string, string | number>; is_read: boolean; created_at: string }>("notifications", { select: "id,kind,meta,is_read,created_at", user_id: d.eq(u.id), order: "created_at.desc", limit: "30" });
   return rows.map((r) => ({ id: r.id, kind: r.kind, meta: r.meta, read: r.is_read, at: r.created_at }));
 }));
-export const readNotificationsFn = post().inputValidator(z.object({ token })).handler(({ data }) => run(async () => {
+export const readNotificationsFn = createServerFn({ method: "POST" }).inputValidator(z.object({ token })).handler(({ data }) => run(async () => {
   const d = await import("./db.server"); const u = await d.auth(data.token);
   await d.patch("notifications", { user_id: d.eq(u.id), is_read: d.eq(false) }, { is_read: true });
   return true;
