@@ -64,7 +64,7 @@ export function useServer<T>(fn: (token: string) => Promise<T>, deps: unknown[] 
 }
 
 const MAP: Record<string, TKey> = {
-  not_configured: "errNotConfigured", rate_limited: "errRate", unauthorized: "errUnauthorized", invalid: "errInvalid", locked: "errLocked",
+  not_configured: "errNotConfigured", rate_limited: "errRate", ai_busy: "aiBusy", unauthorized: "errUnauthorized", invalid: "errInvalid", locked: "errLocked",
   pending: "verdictReview", rejected: "verdictRejected", bad_code: "errBadCode", pin_taken: "errPinTaken", ai_blocked: "errAiBlocked",
   not_enough: "notEnough", conflict: "errConflict", bad_file: "errBadFile", bad_video: "errBadFile",
 };

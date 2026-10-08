@@ -1,6 +1,7 @@
 /**
  * SERVER-ONLY. Free AI via Google Gemini API (AI Studio free tier).
- * Env: GEMINI_API_KEY (required), GEMINI_MODEL (optional, default gemini-2.5-flash).
+ * Env: GEMINI_API_KEY (required), GEMINI_MODEL (optional, default gemini-3.8-flash),
+ * GEMINI_FALLBACK_MODEL (optional).
  */
 import { z } from "zod";
 import { AppError, ConfigError } from "./errors";
@@ -10,20 +11,67 @@ type Img = { mediaType: "image/jpeg" | "image/png" | "image/webp"; data: string 
 const LANG_NAME = { ru: "Russian", en: "English", uz: "Uzbek (Latin script)", tj: "Tajik (Cyrillic)" } as const;
 export type Lang = keyof typeof LANG_NAME;
 
+const RETRYABLE_GEMINI_STATUSES = new Set([500, 502, 503, 504]);
+const fetchErrorName = (error: unknown) =>
+  typeof error === "object" && error !== null && "name" in error ? String(error.name) : "";
+const isNetworkOrTimeoutError = (error: unknown) =>
+  error instanceof TypeError || ["AbortError", "TimeoutError"].includes(fetchErrorName(error));
+
+async function fetchGemini(model: string, bodyString: string, key: string): Promise<Response> {
+  for (let attemptIndex = 0; attemptIndex < 4; attemptIndex++) {
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-goog-api-key": key },
+        body: bodyString,
+        signal: AbortSignal.timeout(60_000),
+      });
+      if (!RETRYABLE_GEMINI_STATUSES.has(res.status) || attemptIndex === 3) return res;
+      const delayMs = 1500 * 2 ** attemptIndex;
+      console.warn(`[gemini] retry ${attemptIndex + 2}/4 after ${res.status} (model ${model})`);
+      await new Promise((r) => setTimeout(r, delayMs));
+    } catch (error) {
+      if (!isNetworkOrTimeoutError(error) || attemptIndex === 3) throw error;
+      const delayMs = 1500 * 2 ** attemptIndex;
+      const reason = error instanceof TypeError ? "network error" : fetchErrorName(error);
+      console.warn(`[gemini] retry ${attemptIndex + 2}/4 after ${reason} (model ${model})`);
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+  throw new Error("Gemini retry attempts exhausted");
+}
+
 async function callGemini<T>(o: { system: string; text: string; images: Img[]; schema: z.ZodType<T> }): Promise<T> {
   const key = env("GEMINI_API_KEY");
   if (!key) throw new ConfigError("GEMINI_API_KEY is not set");
-  const model = env("GEMINI_MODEL") || "gemini-2.5-flash";
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-goog-api-key": key },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: o.system }] },
-      contents: [{ role: "user", parts: [...o.images.map((i) => ({ inline_data: { mime_type: i.mediaType, data: i.data } })), { text: o.text }] }],
-      generationConfig: { temperature: 0.2, responseMimeType: "application/json" },
-    }),
+  const model = env("GEMINI_MODEL") || "gemini-3.8-flash";
+  const fallbackModel = env("GEMINI_FALLBACK_MODEL");
+  const bodyString = JSON.stringify({
+    systemInstruction: { parts: [{ text: o.system }] },
+    contents: [{ role: "user", parts: [...o.images.map((i) => ({ inline_data: { mime_type: i.mediaType, data: i.data } })), { text: o.text }] }],
+    generationConfig: { temperature: 0.2, responseMimeType: "application/json" },
   });
+  let res: Response | undefined;
+  let primaryFailed = false;
+  try {
+    res = await fetchGemini(model, bodyString, key);
+  } catch (error) {
+    if (!isNetworkOrTimeoutError(error)) throw error;
+    primaryFailed = true;
+  }
+  if ((primaryFailed || (res && RETRYABLE_GEMINI_STATUSES.has(res.status))) && fallbackModel && fallbackModel !== model) {
+    try {
+      res = await fetchGemini(fallbackModel, bodyString, key);
+      primaryFailed = false;
+    } catch (error) {
+      if (isNetworkOrTimeoutError(error)) throw new AppError("ai_busy");
+      throw error;
+    }
+  }
+  if (primaryFailed) throw new AppError("ai_busy");
+  if (!res) throw new AppError("ai_busy");
   if (res.status === 429) throw new AppError("rate_limited");
+  if (RETRYABLE_GEMINI_STATUSES.has(res.status)) throw new AppError("ai_busy");
   if (!res.ok) throw new Error(`gemini ${res.status}: ${(await res.text()).slice(0, 200)}`);
   const j = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
   const raw = (j.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? "").join("").replace(/^```(?:json)?|```$/gm, "").trim();

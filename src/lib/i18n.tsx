@@ -123,6 +123,7 @@ const D = {
   signals: ["Сигналы", "Signals", "Signallar", "Сигналҳо"],
   noSignals: ["Нет подозрительных подписей", "No suspicious signatures", "Shubhali imzo yo'q", "Имзои шубҳанок нест"],
   aiUnavailable: ["AI-сервер недоступен. Попробуйте позже.", "AI server unavailable. Try again later.", "AI serveri mavjud emas. Keyinroq urinib ko'ring.", "Сервери AI дастрас нест. Баъдтар кӯшиш кунед."],
+  aiBusy: ["AI сейчас перегружен. Подождите минуту и попробуйте снова.", "The AI is busy right now. Wait a minute and try again.", "AI hozir band. Bir daqiqa kutib, qayta urinib ko'ring.", "AI ҳоло банд аст. Як дақиқа интизор шавед ва дубора кӯшиш кунед."],
   aiNotConfigured: ["AI не настроен администратором (нет ключа на сервере).", "AI is not configured by the admin (no server key).", "AI administrator tomonidan sozlanmagan (serverda kalit yo'q).", "AI аз ҷониби администратор танзим нашудааст (калид нест)."],
   notNotebook: ["Это не похоже на страницу тетради. Сфотографируйте задание ещё раз.", "This doesn't look like a notebook page. Take the photo again.", "Bu daftar sahifasiga o'xshamaydi. Qayta suratga oling.", "Ин ба саҳифаи дафтар монанд нест. Аз нав акс гиред."],
   notHandwriting: ["Почерк на фото не найден.", "No handwriting found in the photo.", "Rasmda qo'lyozma topilmadi.", "Дар акс дастнавис ёфт нашуд."],
