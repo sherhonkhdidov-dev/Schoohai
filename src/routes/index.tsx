@@ -7,6 +7,7 @@ import { helpRequestsFn, tasksFn } from "@/lib/api";
 import { Header, Onboarding } from "@/components/school/Onboarding";
 import { Btn, Card, Label, Sheet } from "@/components/school/ui";
 import * as F from "@/components/school/Features";
+import { AlertsSetting, CheckHistory, ProfileCard, Security } from "@/components/school/Account";
 import { BellButton, NotificationsSheet, useNotifications } from "@/components/school/Notifications";
 
 export const Route = createFileRoute("/")({
@@ -41,7 +42,7 @@ function Root() {
   );
 }
 
-type Open = null | "check" | "help" | "forgot" | "videos" | "requests" | "canteen" | "bazaar" | "rewards" | "rating" | "hand" | "weekly" | "settings" | "task" | "notifs";
+type Open = null | "check" | "help" | "forgot" | "videos" | "requests" | "canteen" | "bazaar" | "rewards" | "rating" | "hand" | "weekly" | "settings" | "task" | "notifs" | "history";
 
 function Shell() {
   const { t, lang, setLang } = useT();
@@ -110,7 +111,7 @@ function Shell() {
           <div>
             <Label>{t("quick")}</Label>
             <div className="grid grid-cols-3 gap-2">
-              {([["💬", "help", "help"], ["📓", "forgot", "forgot"], ["🎬", "videoFromTeacher", "videos"], ["🍽️", "canteen", "canteen"], ["🎁", "rewards", "rewards"]] as [string, TKey, Open][]).map(([e, k, o]) => (
+              {([["💬", "help", "help"], ["📓", "forgot", "forgot"], ["🎬", "videoFromTeacher", "videos"], ["🍽️", "canteen", "canteen"], ["🎁", "rewards", "rewards"], ["🕘", "history", "history"]] as [string, TKey, Open][]).map(([e, k, o]) => (
                 <button key={k} onClick={() => setOpen(o)} className="clip-card bg-card p-2.5 text-left ring-1 ring-ink/5 active:scale-95"><span className="text-[18px]">{e}</span><div className="mt-1 text-[11px] font-bold leading-tight">{t(k)}</div></button>
               ))}
             </div>
@@ -128,6 +129,7 @@ function Shell() {
           <F.Signals />
           <F.Announcements />
           <Btn variant="ink" className="w-full" onClick={() => setOpen("rating")}>🏆 {t("rating")}</Btn>
+          <Btn variant="ink" className="w-full" onClick={() => setOpen("history")}>🕘 {t("history")}</Btn>
         </>}
 
         {me.role === "parent" && <>
@@ -139,6 +141,7 @@ function Shell() {
           {s && <Card className={`flex items-center gap-3 ring-2 ${s.doneToday ? "ring-success/50" : "ring-destructive/40"}`}><span className="text-2xl">{s.doneToday ? "✅" : "🔔"}</span><span className="font-bold">{s.doneToday ? t("doneToday") : t("reminder")}</span></Card>}
           <button onClick={() => setOpen("videos")} className="clip-card block w-full bg-ink p-4 text-left text-paper"><Label>{t("videoFromTeacher")}</Label><p className="font-bold text-acid">🎬 {t("videoFromTeacher")} →</p></button>
           <button onClick={() => setOpen("weekly")} className="clip-card w-full bg-acid p-4 text-left"><div className="font-display text-2xl uppercase">📄 {t("weekly")}</div><div className="text-[12px] font-semibold">{t("signHere")} →</div></button>
+          <button onClick={() => setOpen("history")} className="clip-card block w-full bg-card p-4 text-left ring-1 ring-ink/10"><div className="font-bold">🕘 {t("history")} →</div></button>
           <F.Announcements />
           <HandCard score={s?.hand ?? null} onClick={() => setOpen("hand")} />
         </>}
@@ -167,8 +170,10 @@ function Shell() {
       {open === "hand" && <F.Handwriting onClose={close} onDone={changed} />}
       {open === "weekly" && <F.WeeklyReport onClose={close} />}
       {open === "task" && <F.TeacherTask onClose={close} onDone={changed} />}
+      {open === "history" && <CheckHistory onClose={close} />}
       {open === "settings" && (
         <Sheet title={t("settings")} onClose={close}>
+          <ProfileCard />
           {me.role !== "parent" && <Card dark><Label>{t("yourCode")}</Label><div className="font-display text-4xl tracking-[0.3em] text-acid">{me.code}</div><p className="mt-1 text-[12px] opacity-70">{t(me.role === "teacher" ? "codeHintTeacher" : "codeHintStudent")}</p></Card>}
           {me.teacher && <Card><Label>{t("linkedTeacher")}</Label><p className="font-bold">{me.teacher.name}{me.teacher.subject ? ` · ${me.teacher.subject}` : ""}</p></Card>}
           {me.child && <Card><Label>{t("linkedChild")}</Label><p className="font-bold">{me.child.name}{me.child.cls ? ` · ${me.child.cls}` : ""}</p></Card>}
@@ -176,6 +181,8 @@ function Shell() {
           {LANGS.map((l) => (
             <button key={l.code} onClick={() => setLang(l.code)} className={`clip-card flex w-full items-center justify-between p-4 font-bold ${lang === l.code ? "bg-acid" : "bg-card ring-1 ring-ink/10"}`}>{l.label}{lang === l.code && <span>✔</span>}</button>
           ))}
+          <AlertsSetting />
+          <Security />
           <Btn variant="ink" className="w-full" onClick={() => { close(); logout(); }}>{t("logout")}</Btn>
         </Sheet>
       )}

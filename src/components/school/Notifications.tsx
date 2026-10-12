@@ -19,8 +19,13 @@ export function notifText(t: (k: TKey) => string, n: Notif) {
   return t(key).replace(/\{(\w+)\}/g, (_, k: string) => String(n.meta?.[k] ?? ""));
 }
 
+const MUTE_KEY = "zumrad-alerts-off";
+export const alertsMuted = () => { try { return localStorage.getItem(MUTE_KEY) === "1"; } catch { return false; } };
+export const setAlertsMuted = (muted: boolean) => { try { if (muted) localStorage.setItem(MUTE_KEY, "1"); else localStorage.removeItem(MUTE_KEY); } catch { /* optional */ } };
+
 async function showSystem(title: string, body: string) {
   try {
+    if (alertsMuted()) return;
     if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
     const reg = await navigator.serviceWorker?.ready;
     if (reg) await reg.showNotification(title, { body, icon: "/favicon.ico", tag: "zumrad" });

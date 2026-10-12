@@ -13,6 +13,8 @@ Everything below runs on the server with a real database (Supabase) and free AI 
 | Rating | Distinct active days in the last 30 days among the class's students. |
 | Parent signature | Speed/pressure compared with that parent's earlier genuine signatures on the server; hash-chained journal in the database; forged ones raise a signal for the teacher. |
 | Notifications | The app sends its own in-app notifications (bell icon, checked every 30 s): new task, announcement, teacher video answer, "did not understand" request, homework result for parents, bazaar reservation, question reply, suspicious signature. If the user allows it, they also appear as phone/desktop notifications while the app is in the background. No SMS. |
+| Profile and security | Settings shows the profile (phone is masked). Changing the PIN needs the current PIN, shares the login throttle, and signs out every other device: session tokens are bound to the PIN hash. A per-device switch mutes phone notifications. |
+| Check history | Student and parent see the last 50 AI homework checks and handwriting checks (date, stars, exercises, mistakes, score). Teachers see the outcome of their own diploma verification. Photos are not stored, only results. |
 | Shop, canteen, bazaar, questions, notebook, announcements | Database-backed; prices are enforced on the server. |
 
 ## Limits you must know

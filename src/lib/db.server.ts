@@ -64,18 +64,22 @@ async function hmacKey() {
   if (!secret || secret.length < 24) throw new ConfigError("SESSION_SECRET must be set (24+ chars)");
   return crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
 }
+/** Tokens are bound to the account's current PIN hash: changing the PIN signs out every other device. */
+const pinFp = async (pinHash: string) => (await sha256(`pinfp|${pinHash}`)).slice(0, 12);
 export async function signToken(uid: string, days = 30) {
+  const u = await one<{ pin_hash: string }>("users", { select: "pin_hash", id: eq(uid) });
+  if (!u) throw new AppError("unauthorized");
   const now = Math.floor(Date.now() / 1000);
-  const body = b64u(enc.encode(JSON.stringify({ uid, iat: now, exp: now + days * 86400 })));
+  const body = b64u(enc.encode(JSON.stringify({ uid, iat: now, exp: now + days * 86400, v: await pinFp(u.pin_hash) })));
   return `${body}.${b64u(await crypto.subtle.sign("HMAC", await hmacKey(), enc.encode(body)))}`;
 }
-async function verifyToken(token: string): Promise<string | null> {
+async function verifyToken(token: string): Promise<{ uid: string; v: string } | null> {
   const [body, sig] = token.split(".");
   if (!body || !sig) return null;
   try {
     if (!(await crypto.subtle.verify("HMAC", await hmacKey(), fromB64u(sig), enc.encode(body)))) return null;
-    const c = JSON.parse(new TextDecoder().decode(fromB64u(body))) as { uid: string; exp: number };
-    return c.exp > Math.floor(Date.now() / 1000) ? c.uid : null;
+    const c = JSON.parse(new TextDecoder().decode(fromB64u(body))) as { uid: string; exp: number; v?: string };
+    return c.exp > Math.floor(Date.now() / 1000) && typeof c.v === "string" ? { uid: c.uid, v: c.v } : null;
   } catch { return null; }
 }
 
@@ -87,10 +91,12 @@ export type UserRow = {
 const COLS = "id,role,full_name,phone,age,school,class_label,father_name,subject,code,teacher_id,child_id,status,coins";
 
 export async function auth(token: string, role?: UserRow["role"]): Promise<UserRow> {
-  const uid = await verifyToken(token);
-  if (!uid) throw new AppError("unauthorized");
-  const u = await one<UserRow>("users", { select: COLS, id: eq(uid) });
-  if (!u || u.status !== "approved") throw new AppError("unauthorized");
+  const t = await verifyToken(token);
+  if (!t) throw new AppError("unauthorized");
+  const row = await one<UserRow & { pin_hash: string }>("users", { select: `${COLS},pin_hash`, id: eq(t.uid) });
+  if (!row) throw new AppError("unauthorized");
+  const { pin_hash, ...u } = row;
+  if (u.status !== "approved" || t.v !== (await pinFp(pin_hash))) throw new AppError("unauthorized");
   if (role && u.role !== role) throw new AppError("forbidden");
   return u;
 }

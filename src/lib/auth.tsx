@@ -4,12 +4,12 @@ import { ApiErr, call } from "./errors";
 import type { TKey } from "./i18n";
 
 export type Me = {
-  id: string; role: "student" | "teacher" | "parent"; fullName: string; school: string | null; cls: string | null; code: string; coins: number; subject: string | null;
+  id: string; role: "student" | "teacher" | "parent"; fullName: string; phone: string; school: string | null; cls: string | null; code: string; coins: number; subject: string | null;
   teacher: { name: string; subject: string | null; code: string } | null;
   child: { name: string; code: string; school: string | null; cls: string | null } | null;
 };
 
-type Ctx = { token: string; me: Me; refresh: () => Promise<void>; logout: () => void };
+type Ctx = { token: string; me: Me; refresh: () => Promise<void>; replaceToken: (token: string) => Promise<void>; logout: () => void };
 const AuthCtx = createContext<Ctx | null>(null);
 export const useAuth = () => { const c = useContext(AuthCtx); if (!c) throw new Error("no auth"); return c; };
 
@@ -40,7 +40,7 @@ export function AuthProvider({ children, anon, loading, failed }: { children: Re
   if (st.status === "error") return <>{failed(st.code, () => { setSt({ status: "loading" }); void load(localStorage.getItem(KEY)); })}</>;
   if (st.status === "anon") return <Gate.Provider value={{ login: (t) => { setSt({ status: "loading" }); void load(t); } }}>{anon}</Gate.Provider>;
   const { token, me } = st;
-  return <AuthCtx.Provider value={{ token, me, refresh: () => load(token), logout }}>{children}</AuthCtx.Provider>;
+  return <AuthCtx.Provider value={{ token, me, refresh: () => load(token), replaceToken: (t) => load(t), logout }}>{children}</AuthCtx.Provider>;
 }
 
 /** Load data from the server for the signed-in user. A rejected session logs the user out. */
@@ -66,7 +66,7 @@ export function useServer<T>(fn: (token: string) => Promise<T>, deps: unknown[] 
 const MAP: Record<string, TKey> = {
   not_configured: "errNotConfigured", rate_limited: "errRate", ai_busy: "aiBusy", unauthorized: "errUnauthorized", invalid: "errInvalid", locked: "errLocked",
   pending: "verdictReview", rejected: "verdictRejected", bad_code: "errBadCode", pin_taken: "errPinTaken", ai_blocked: "errAiBlocked",
-  not_enough: "notEnough", conflict: "errConflict", bad_file: "errBadFile", bad_video: "errBadFile",
+  not_enough: "notEnough", conflict: "errConflict", bad_file: "errBadFile", bad_video: "errBadFile", bad_pin: "errBadPin", pin_same: "errPinSame",
 };
 export const codeKey = (code: string): TKey => MAP[code] ?? "aiUnavailable";
 export const errKey = (e: unknown): TKey => codeKey(e instanceof ApiErr ? e.code : "server");

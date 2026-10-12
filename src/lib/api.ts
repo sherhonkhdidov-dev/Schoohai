@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { AppError, run } from "./errors";
 import { MENU, SHOP } from "./catalog";
+import type { HistoryData, HomeworkResult } from "./types";
 
 type D = typeof import("./db.server");
 
@@ -48,6 +49,8 @@ async function teacherIdOf(d: D, u: import("./db.server").UserRow) {
   if (u.role === "teacher") return u.id;
   return (await childOf(d, u)).teacher_id;
 }
+const maskPhone = (p: string) => (p.length > 6 ? `${p.slice(0, 4)}${"•".repeat(p.length - 6)}${p.slice(-2)}` : p);
+const strs = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
 const studentsOf = (d: D, teacherId: string) => d.select<{ id: string; full_name: string; class_label: string | null }>("users", { select: "id,full_name,class_label", teacher_id: d.eq(teacherId), role: d.eq("student") });
 
 /* ---------------- auth ---------------- */
@@ -109,13 +112,51 @@ export const loginFn = createServerFn({ method: "POST" })
 export const meFn = createServerFn({ method: "POST" }).inputValidator(z.object({ token })).handler(({ data }) => run(async () => {
   const d = await import("./db.server");
   const u = await d.auth(data.token);
-  const base = { id: u.id, role: u.role, fullName: u.full_name, school: u.school, cls: u.class_label, code: u.code, coins: u.coins, subject: u.subject };
+  const base = { id: u.id, role: u.role, fullName: u.full_name, phone: maskPhone(u.phone), school: u.school, cls: u.class_label, code: u.code, coins: u.coins, subject: u.subject };
   let teacher: { name: string; subject: string | null; code: string } | null = null, child: { name: string; code: string; school: string | null; cls: string | null } | null = null;
   const c = u.role === "parent" ? await childOf(d, u) : null;
   if (c) child = { name: c.full_name, code: c.code, school: c.school, cls: c.class_label };
   const tid = u.role === "teacher" ? null : (c ?? u).teacher_id;
   if (tid) { const t = await d.one<{ full_name: string; subject: string | null; code: string }>("users", { select: "full_name,subject,code", id: d.eq(tid) }); if (t) teacher = { name: t.full_name, subject: t.subject, code: t.code }; }
   return { ...base, teacher, child };
+}));
+
+/** Change the PIN. Needs the current PIN; every token issued before the change stops working, a fresh one is returned. */
+export const changePinFn = createServerFn({ method: "POST" }).inputValidator(z.object({ token, currentPin: pin, newPin: pin })).handler(({ data }) => run(async () => {
+  const d = await import("./db.server");
+  const u = await d.auth(data.token);
+  await d.assertNotLocked(u.phone);
+  const row = await d.one<{ pin_hash: string; pin_salt: string }>("users", { select: "pin_hash,pin_salt", id: d.eq(u.id) });
+  if (!row || (await d.hashPin(data.currentPin, row.pin_salt)) !== row.pin_hash) { await d.recordFailure(u.phone); throw new AppError("bad_pin"); }
+  if (data.newPin === data.currentPin) throw new AppError("pin_same");
+  const others = await d.select<{ pin_hash: string; pin_salt: string }>("users", { select: "pin_hash,pin_salt", phone: d.eq(u.phone), id: `neq.${u.id}`, status: "neq.rejected" });
+  for (const r of others) if ((await d.hashPin(data.newPin, r.pin_salt)) === r.pin_hash) throw new AppError("pin_taken");
+  const salt = d.newSalt();
+  await d.patch("users", { id: d.eq(u.id) }, { pin_salt: salt, pin_hash: await d.hashPin(data.newPin, salt) });
+  return { token: await d.signToken(u.id) };
+}));
+
+/* ---------------- check history ---------------- */
+/** Student / parent: AI checks of the child's homework and handwriting (photos are not stored, only results). Teacher: own document verification. */
+export const historyFn = createServerFn({ method: "POST" }).inputValidator(z.object({ token })).handler(({ data }) => run(async () => {
+  const d = await import("./db.server"); const u = await d.auth(data.token);
+  const out: HistoryData = { child: "", homework: [], handwriting: [], reviews: [] };
+  if (u.role === "teacher") {
+    const rows = await d.select<{ id: string; verdict: string; risk: number; reasons: unknown; summary: string | null; created_at: string }>("teacher_reviews", { select: "id,verdict,risk,reasons,summary,created_at", user_id: d.eq(u.id), order: "created_at.desc", limit: "20" });
+    out.reviews = rows.map((r) => ({ id: r.id, verdict: r.verdict, risk: r.risk, summary: r.summary ?? "", reasons: strs(r.reasons).slice(0, 5), at: r.created_at }));
+    return out;
+  }
+  const s = await childOf(d, u);
+  out.child = s.full_name;
+  const hw = await d.select<{ id: string; subject: string | null; stars: number; understood: boolean; copy_risk: number; seconds: number; created_at: string; result: Partial<HomeworkResult> | null }>("submissions", { select: "id,subject,stars,understood,copy_risk,seconds,created_at,result", student_id: d.eq(s.id), order: "created_at.desc", limit: "50" });
+  const hand = await d.select<{ id: string; score: number; created_at: string; result: { summary?: string } | null }>("handwriting", { select: "id,score,created_at,result", student_id: d.eq(s.id), order: "created_at.desc", limit: "50" });
+  out.homework = hw.map((r) => ({
+    id: r.id, subject: r.subject, stars: r.stars, allDone: Boolean(r.result?.allDone), understood: r.understood,
+    exercisesDone: Number(r.result?.exercisesDone ?? 0), exercisesExpected: r.result?.exercisesExpected ?? null, copyRisk: r.copy_risk, seconds: r.seconds,
+    mistakes: strs(r.result?.mistakes).slice(0, 6), feedback: strs(r.result?.feedback).slice(0, 4), at: r.created_at,
+  }));
+  out.handwriting = hand.map((r) => ({ id: r.id, score: r.score, summary: typeof r.result?.summary === "string" ? r.result.summary : "", at: r.created_at }));
+  return out;
 }));
 
 /* ---------------- tasks ---------------- */
